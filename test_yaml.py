@@ -1,5 +1,12 @@
 import yaml
 import re
+from collections import OrderedDict
+
+# Add custom representer for OrderedDict
+def ordered_dict_representer(dumper, data):
+    return dumper.represent_mapping('tag:yaml.org,2002:map', data.items())
+
+yaml.add_representer(OrderedDict, ordered_dict_representer)
 
 def clean_yaml_string(input_string):
     """
@@ -10,6 +17,7 @@ def clean_yaml_string(input_string):
     3. Missing initial "-" for messageBodyType
     4. Extra characters before and after the YAML content
     5. Preserves newlines within quoted values
+    6. Maintains correct key order (messageBodyType before messageBodyContent)
     """
     # Extract message entries
     entries = []
@@ -81,7 +89,11 @@ def clean_yaml_string(input_string):
     # Process entries into Python objects
     yaml_objects = []
     for entry_lines in entries:
-        entry_dict = {'messageBodyType': None, 'messageBodyContent': {}}
+        # Use OrderedDict to maintain key order
+        entry_dict = OrderedDict()
+        entry_dict['messageBodyType'] = None
+        entry_dict['messageBodyContent'] = OrderedDict()
+        
         current_key = None
         multi_line_value = []
         
@@ -111,7 +123,7 @@ def clean_yaml_string(input_string):
                 else:
                     if value.startswith("'") and value.endswith("'"):
                         value = value[1:-1]
-                    value = value.replace("'", "\\'")
+                    # Don't escape apostrophes, just use them as is
                     entry_dict['messageBodyContent'][current_key] = value
                     current_key = None
             elif current_key and multi_line_value:
@@ -200,7 +212,16 @@ messageBodyContent:
 messageBodyContent:
     datasetName: test dataset
     reasoning: This is a multi-line
-      reasoning without quotes"""
+      reasoning without quotes""",
+        
+        # Test case 6: Apostrophe handling
+        """- messageBodyType: 'Basic_Message'
+messageBodyContent:
+    message: 'cashier's check'
+- messageBodyType: 'Dataset_Message'
+messageBodyContent:
+    datasetName: 'test dataset'
+    reasoning: 'test's reasoning'"""
     ]
     
     # Save all cleaned outputs to a single string
