@@ -43,19 +43,35 @@ def clean_yaml_string(input_string):
             stripped.startswith(('messageBodyContent:', 'message:', 'datasetName:', 'reasoning:'))
             or stripped.startswith((' ', '\t'))
         ):
-            # Handle quoted values that might span multiple lines
-            if "'" in stripped and stripped.count("'") % 2 == 1:
-                # Start of a multi-line quoted value
+            # Handle multi-line values (both quoted and unquoted)
+            is_quoted = stripped.count("'") % 2 == 1
+            is_continuation = (stripped.startswith(' ') or stripped.startswith('\t')) and not stripped.lstrip().startswith(('- messageBodyType:', 'messageBodyType:'))
+            
+            if is_quoted or is_continuation:
                 full_value = [line]
                 i += 1
-                while i < len(lines) and not lines[i].strip().startswith(('- messageBodyType:', 'messageBodyType:')):
+                while i < len(lines):
                     next_line = lines[i].rstrip()
-                    full_value.append(next_line)
-                    if "'" in next_line and not next_line.strip().startswith("'"):
+                    next_stripped = next_line.strip()
+                    
+                    # Break if we hit a new entry
+                    if next_stripped.startswith(('- messageBodyType:', 'messageBodyType:')):
                         break
+                        
+                    # For quoted values, break if we find the closing quote
+                    if is_quoted and "'" in next_line and not next_line.strip().startswith("'"):
+                        full_value.append(next_line)
+                        break
+                        
+                    # For unquoted values, break if we hit a new key
+                    if not is_quoted and next_stripped and not next_stripped.startswith((' ', '\t')):
+                        break
+                        
+                    full_value.append(next_line)
                     i += 1
                 current_entry.extend(full_value)
                 continue
+                
             current_entry.append(line)
         i += 1
     
@@ -173,8 +189,22 @@ message with newlines'
 messageBodyContent:
     datasetName: 'test dataset'
     reasoning: 'This is a multi-line
-reasoning with newlines'"""
+reasoning with newlines'""",
+        
+        # Test case 5: Unquoted multi-line values
+        """- messageBodyType: 'Basic_Message'
+messageBodyContent:
+    message: This is a multi-line
+      message without quotes
+- messageBodyType: 'Dataset_Message'
+messageBodyContent:
+    datasetName: test dataset
+    reasoning: This is a multi-line
+      reasoning without quotes"""
     ]
+    
+    # Save all cleaned outputs to a single string
+    all_cleaned_output = ""
     
     for i, test_case in enumerate(test_cases, 1):
         print(f"\nTest Case {i}:")
@@ -183,6 +213,7 @@ reasoning with newlines'"""
         print("\nCleaned Output:")
         cleaned = clean_yaml_string(test_case)
         print(cleaned)
+        all_cleaned_output += cleaned + "\n\n"
         print("\nVerifying with yaml.safe_load:")
         try:
             data = yaml.safe_load(cleaned)
@@ -190,6 +221,22 @@ reasoning with newlines'"""
             print(data)
         except yaml.YAMLError as e:
             print(f"Error: {e}")
+    
+    # Save the combined cleaned output to a file
+    with open('cleaned_messages.yaml', 'w') as f:
+        f.write(all_cleaned_output)
+    
+    print("\nAll cleaned outputs have been saved to 'cleaned_messages.yaml'")
+    
+    # Verify the combined file can be loaded
+    print("\nVerifying combined file:")
+    try:
+        with open('cleaned_messages.yaml', 'r') as f:
+            data = yaml.safe_load(f)
+            print("Successfully loaded combined file!")
+            print(data)
+    except yaml.YAMLError as e:
+        print(f"Error loading combined file: {e}")
 
 if __name__ == "__main__":
     print("Testing original YAML file:")
